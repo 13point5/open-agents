@@ -16,7 +16,7 @@ const TodoViewContext = createContext<TodoViewContextValue | undefined>(
 );
 
 export function TodoViewProvider({ children }: { children: ReactNode }) {
-  const [isTodoVisible, setIsTodoVisible] = useState(false);
+  const [isTodoVisible, setIsTodoVisible] = useState(true);
 
   const toggleTodoView = useCallback(() => {
     setIsTodoVisible((prev) => !prev);

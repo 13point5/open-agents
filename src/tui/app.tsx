@@ -14,7 +14,7 @@ import { useTodoView } from "./todo-view-context.js";
 import { ToolCall, getToolApprovalInfo } from "./components/tool-call.js";
 import { ApprovalPanel } from "./components/approval-panel.js";
 import { TaskGroupView } from "./components/task-group-view.js";
-import { StatusBar } from "./components/status-bar.js";
+import { StatusBar, StandaloneTodoList } from "./components/status-bar.js";
 import { InputBox } from "./components/input-box.js";
 import { Header } from "./components/header.js";
 import { pasteCollapseLineThreshold, tuiAgentModelId } from "./config.js";
@@ -484,7 +484,7 @@ function AppContent({ options }: AppProps) {
   const { exit } = useApp();
   const { chat, state, cycleAutoAcceptMode } = useChatContext();
   const { isExpanded, toggleExpanded } = useExpandedView();
-  const { toggleTodoView } = useTodoView();
+  const { isTodoVisible, toggleTodoView } = useTodoView();
   const [wasInterrupted, setWasInterrupted] = useState(false);
 
   const { messages, sendMessage, status, stop, error } = useChat({
@@ -516,6 +516,12 @@ function AppContent({ options }: AppProps) {
     }
     return { hasPendingApproval: false, activeApprovalId: null, pendingToolPart: null };
   }, [messages]);
+
+  // Extract todos for standalone display when not streaming
+  const todos = useMemo(
+    () => extractTodosFromLastAssistantMessage(messages),
+    [messages]
+  );
 
   // Get approval info for the pending tool
   const approvalInfo = useMemo(() => {
@@ -590,6 +596,11 @@ function AppContent({ options }: AppProps) {
           {/* Show streaming status bar when streaming */}
           {isStreaming && (
             <StreamingStatusBar messages={messages} />
+          )}
+
+          {/* Show standalone todo list when not streaming and has todos */}
+          {!isStreaming && todos && todos.length > 0 && (
+            <StandaloneTodoList todos={todos} isTodoVisible={isTodoVisible} />
           )}
 
           {/* Show input box (disabled when streaming) */}

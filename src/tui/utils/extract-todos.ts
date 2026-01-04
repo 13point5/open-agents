@@ -28,7 +28,17 @@ export function extractTodosFromMessage(
 export function extractTodosFromLastAssistantMessage(
   messages: TUIAgentUIMessage[]
 ): TodoItem[] | null {
+  // Find the last user message index to separate current vs previous exchanges
+  let lastUserMessageIndex = -1;
   for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]?.role === "user") {
+      lastUserMessageIndex = i;
+      break;
+    }
+  }
+
+  // First, look for todos in the current exchange (after last user message)
+  for (let i = messages.length - 1; i > lastUserMessageIndex; i--) {
     const message = messages[i];
     if (!message) continue;
     if (message.role === "assistant") {
@@ -37,9 +47,29 @@ export function extractTodosFromLastAssistantMessage(
         return todos;
       }
     }
-    if (message.role === "user") {
+  }
+
+  // No todos in current exchange - check the previous exchange for incomplete todos
+  // Find the second-to-last user message to bound the previous exchange
+  let prevUserMessageIndex = -1;
+  for (let i = lastUserMessageIndex - 1; i >= 0; i--) {
+    if (messages[i]?.role === "user") {
+      prevUserMessageIndex = i;
       break;
     }
   }
+
+  // Look for todos in the previous exchange only
+  for (let i = lastUserMessageIndex - 1; i > prevUserMessageIndex; i--) {
+    const message = messages[i];
+    if (!message) continue;
+    if (message.role === "assistant") {
+      const todos = extractTodosFromMessage(message);
+      if (todos !== null && todos.some((t) => t.status !== "completed")) {
+        return todos;
+      }
+    }
+  }
+
   return null;
 }
