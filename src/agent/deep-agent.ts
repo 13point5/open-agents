@@ -1,9 +1,4 @@
-import {
-  ToolLoopAgent,
-  stepCountIs,
-  wrapLanguageModel,
-  type TypedToolResult,
-} from "ai";
+import { ToolLoopAgent, stepCountIs, type TypedToolResult } from "ai";
 import { z } from "zod";
 import {
   todoWriteTool,
@@ -75,8 +70,7 @@ export const deepAgent = new ToolLoopAgent({
     const customInstructions = options?.customInstructions;
 
     // Use provided sandbox, or create a local sandbox with the working directory
-    const sandbox =
-      options?.sandbox ?? createLocalSandbox(workingDirectory);
+    const sandbox = options?.sandbox ?? createLocalSandbox(workingDirectory);
 
     return {
       ...settings,
@@ -97,7 +91,7 @@ export const deepAgent = new ToolLoopAgent({
     } catch {
       // Sandbox not available, nothing to clean up
     }
-  }
+  },
 });
 
 export function extractTodosFromStep(
