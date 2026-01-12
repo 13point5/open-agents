@@ -1,17 +1,57 @@
 import { deepAgent } from "@open-harness/agent";
 import { connectVercelSandbox } from "@open-harness/sandbox";
 import { convertToModelMessages } from "ai";
+import { nanoid } from "nanoid";
 import { WebAgentUIMessage } from "@/app/types";
 import { getUserGitHubToken } from "@/lib/github/user-token";
+import {
+  createTaskMessage,
+  createTaskMessageIfNotExists,
+  getTaskById,
+} from "@/lib/db/tasks";
+
+import { getServerSession } from "@/lib/session/get-server-session";
 
 // Allow streaming responses up to 5 minutes (matching sandbox timeout)
 export const maxDuration = 300;
 
+interface ChatRequestBody {
+  messages: WebAgentUIMessage[];
+  sandboxId: string;
+  taskId?: string;
+}
+
 export async function POST(req: Request) {
-  const {
-    messages,
-    sandboxId,
-  }: { messages: WebAgentUIMessage[]; sandboxId: string } = await req.json();
+  // 1. Validate session
+  const session = await getServerSession();
+  if (!session?.user) {
+    return Response.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const { messages, sandboxId, taskId }: ChatRequestBody = await req.json();
+
+  // 2. Verify task ownership if taskId is provided
+  if (taskId) {
+    const task = await getTaskById(taskId);
+    if (!task) {
+      return Response.json({ error: "Task not found" }, { status: 404 });
+    }
+    if (task.userId !== session.user.id) {
+      return Response.json({ error: "Unauthorized" }, { status: 403 });
+    }
+    if (!task.sandboxId) {
+      return Response.json(
+        { error: "Sandbox not linked to task" },
+        { status: 400 },
+      );
+    }
+    if (task.sandboxId !== sandboxId) {
+      return Response.json(
+        { error: "Sandbox does not belong to this task" },
+        { status: 403 },
+      );
+    }
+  }
 
   const modelMessages = await convertToModelMessages(messages, {
     ignoreIncompleteToolCalls: true,
@@ -26,6 +66,30 @@ export async function POST(req: Request) {
     env: githubToken ? { GITHUB_TOKEN: githubToken } : undefined,
   });
 
+  // Save user message immediately (incremental persistence)
+  // Only save if the message has an ID (non-empty string) and hasn't been persisted yet
+  if (taskId && messages.length > 0) {
+    const userMessage = messages[messages.length - 1];
+    if (
+      userMessage &&
+      userMessage.role === "user" &&
+      typeof userMessage.id === "string" &&
+      userMessage.id.length > 0
+    ) {
+      try {
+        // Use idempotent insert to handle race conditions gracefully
+        await createTaskMessageIfNotExists({
+          id: userMessage.id,
+          taskId,
+          role: "user",
+          parts: userMessage,
+        });
+      } catch (error) {
+        console.error("Failed to save user message:", error);
+      }
+    }
+  }
+
   const result = await deepAgent.stream({
     messages: modelMessages,
     options: {
@@ -37,5 +101,23 @@ export async function POST(req: Request) {
     abortSignal: req.signal,
   });
 
-  return result.toUIMessageStreamResponse();
+  // Save assistant message on finish
+  return result.toUIMessageStreamResponse({
+    originalMessages: messages,
+    generateMessageId: nanoid,
+    onFinish: async ({ responseMessage }) => {
+      if (taskId) {
+        try {
+          await createTaskMessage({
+            id: responseMessage.id,
+            taskId,
+            role: "assistant",
+            parts: responseMessage,
+          });
+        } catch (error) {
+          console.error("Failed to save assistant message:", error);
+        }
+      }
+    },
+  });
 }

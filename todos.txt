@@ -12,6 +12,7 @@
 - [ ] implement checkpointing for auto compaction (docs/auto-compaction-checkpoint-idea.md)
 - [x] implement reasoning support (ui and provider options)
 - [ ] add approved commands (auto approve for similar commands)
+- [ ] update task branch when git checkout runs
 - [x] audit the input implementation (suggestions not working and missing chars)
 - [x] support for pasting images
 - [ ] update system prompt to lean heavily on subagents
@@ -39,6 +40,9 @@
   - there are things that should have an auto approve / reject
   - e.g. subagent running a command it shouldnt, should just reject the tool call (add tool result)
 
+- [ ] change button to be create repo if no repo exists
+  - also need to add support for starting up sandbox with no repo / branch
+
 
 ---
 sandbox related:
@@ -54,6 +58,13 @@ sandbox related:
 - have tabs for either starting from an existing repo or fresh (empty sandbox)
 - have concept of workspaces which are sandboxes that start (and tabs in the sidebar) - e.g. the equivalent of chats
 - like conductor, each workspace could have multiple chats? so we could referense one, that would be cool
+
+---
+Web
+
+- [ ] readFile tool should be red if a file hasn't been found!
+
+---
 
 
 ---
