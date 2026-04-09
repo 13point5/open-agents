@@ -63,6 +63,8 @@ const mergeMethodDescriptions: Record<PullRequestMergeMethod, string> = {
   rebase: "All commits will be rebased and added to the base branch.",
 };
 
+const MERGE_READINESS_POLL_INTERVAL_MS = 5_000;
+
 export function MergePrDialog({
   open,
   onOpenChange,
@@ -118,7 +120,11 @@ export function MergePrDialog({
 
       const readinessPayload = payload as MergeReadinessResponse;
       setReadiness(readinessPayload);
-      setMergeMethod(readinessPayload.defaultMethod);
+      setMergeMethod((currentMergeMethod) =>
+        readinessPayload.allowedMethods.includes(currentMergeMethod)
+          ? currentMergeMethod
+          : readinessPayload.defaultMethod,
+      );
     } catch (loadError) {
       if (readinessRequestIdRef.current !== requestId) {
         return;
@@ -154,6 +160,20 @@ export function MergePrDialog({
 
     void loadReadiness();
   }, [open, loadReadiness]);
+
+  useEffect(() => {
+    if (!open || isLoadingReadiness || (readiness?.checks.pending ?? 0) <= 0) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void loadReadiness();
+    }, MERGE_READINESS_POLL_INTERVAL_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isLoadingReadiness, loadReadiness, open, readiness?.checks.pending]);
 
   const canMerge = readiness?.canMerge ?? false;
   const pullRequestUrl = readiness?.pr
