@@ -104,7 +104,11 @@ import {
 } from "@/lib/chat-streaming-state";
 import { ACCEPT_IMAGE_TYPES, isValidImageType } from "@/lib/image-utils";
 import { isLargeText } from "@/lib/text-attachment-utils";
-import { DEFAULT_CONTEXT_LIMIT } from "@/lib/models";
+import {
+  type AvailableModelCost,
+  DEFAULT_CONTEXT_LIMIT,
+  estimateModelUsageCost,
+} from "@/lib/models";
 import { getPrDeploymentRefreshInterval } from "@/lib/pr-deployment-polling";
 import { fetcher } from "@/lib/swr";
 import { streamdownPlugins } from "@/lib/streamdown-config";
@@ -392,6 +396,37 @@ function formatTokens(tokens: number): string {
   return tokens.toString();
 }
 
+function formatUsd(amount: number): string {
+  if (amount >= 100) {
+    return "$" + amount.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  }
+  if (amount >= 1) {
+    return (
+      "$" +
+      amount.toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    );
+  }
+  if (amount >= 0.01) {
+    return (
+      "$" +
+      amount.toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    );
+  }
+  return (
+    "$" +
+    amount.toLocaleString("en-US", {
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 4,
+    })
+  );
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -440,12 +475,16 @@ function CircularProgress({
 
 function ContextUsageIndicator({
   inputTokens,
+  cachedInputTokens,
   outputTokens,
   contextLimit,
+  modelCost,
 }: {
   inputTokens: number;
+  cachedInputTokens: number;
   outputTokens: number;
   contextLimit: number;
+  modelCost?: AvailableModelCost;
 }) {
   if (inputTokens === 0) {
     return null;
@@ -453,6 +492,14 @@ function ContextUsageIndicator({
 
   const percentage =
     contextLimit > 0 ? Math.round((inputTokens / contextLimit) * 100) : 0;
+  const estimatedCost = estimateModelUsageCost(
+    {
+      inputTokens,
+      cachedInputTokens,
+      outputTokens,
+    },
+    modelCost,
+  );
 
   return (
     <Tooltip delayDuration={200}>
@@ -486,6 +533,12 @@ function ContextUsageIndicator({
             <span className="opacity-60">Output</span>
             <span>{formatTokens(outputTokens)}</span>
           </div>
+          {estimatedCost !== undefined ? (
+            <div className="flex justify-between gap-6">
+              <span className="opacity-60">Est. cost</span>
+              <span>{formatUsd(estimatedCost)}</span>
+            </div>
+          ) : null}
         </div>
       </TooltipContent>
     </Tooltip>
@@ -2423,11 +2476,13 @@ export function SessionChatContent({
       if (message?.role === "assistant" && message.metadata?.lastStepUsage) {
         return {
           inputTokens: message.metadata.lastStepUsage.inputTokens ?? 0,
+          cachedInputTokens:
+            message.metadata.lastStepUsage.cachedInputTokens ?? 0,
           outputTokens: message.metadata.lastStepUsage.outputTokens ?? 0,
         };
       }
     }
-    return { inputTokens: 0, outputTokens: 0 };
+    return { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 };
   }, [renderMessages]);
 
   // Detect pending AskUserQuestion tool calls
@@ -3901,10 +3956,12 @@ export function SessionChatContent({
                             )}
                             <ContextUsageIndicator
                               inputTokens={tokenUsage.inputTokens}
+                              cachedInputTokens={tokenUsage.cachedInputTokens}
                               outputTokens={tokenUsage.outputTokens}
                               contextLimit={
                                 contextLimit ?? DEFAULT_CONTEXT_LIMIT
                               }
+                              modelCost={selectedModelOption?.cost}
                             />
                           </div>
 
