@@ -14,7 +14,20 @@ import type { VercelState } from "./state";
 const MAX_OUTPUT_LENGTH = 50_000;
 const DEFAULT_WORKING_DIRECTORY = "/vercel/sandbox";
 const TIMEOUT_BUFFER_MS = 30_000; // 30 seconds buffer for beforeStop hook
-const MAX_SDK_TIMEOUT_MS = 18_000_000; // Vercel API limit: 5 hours
+const DEFAULT_MAX_SDK_TIMEOUT_MS = 2_700_000; // Vercel Hobby API limit: 45 minutes
+const MAX_SDK_TIMEOUT_MS = (() => {
+  const rawValue = process.env.VERCEL_SANDBOX_MAX_TIMEOUT_MS;
+  if (!rawValue) {
+    return DEFAULT_MAX_SDK_TIMEOUT_MS;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_MAX_SDK_TIMEOUT_MS;
+  }
+
+  return parsed;
+})();
 const MAX_PROACTIVE_TIMEOUT_MS = MAX_SDK_TIMEOUT_MS - TIMEOUT_BUFFER_MS;
 const DEFAULT_RECONNECT_TIMEOUT_MS = 300_000; // 5 minutes default timeout for reconnected sandboxes
 const DETACHED_QUICK_FAILURE_WINDOW_MS = 2_000;

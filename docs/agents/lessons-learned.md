@@ -42,6 +42,7 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - Lifecycle workflow must retry after a `skipped/not-due-yet` evaluation; without retry the sandbox never hibernates unless a new event kicks a fresh workflow.
 - When the lifecycle workflow inline fallback runs (SDK unavailable), it evaluates immediately and skips because the sandbox isn't due yet; the status endpoint should detect overdue `hibernateAfter` and kick the lifecycle as a safety net.
 - Self-hosted Vercel Sandbox defaults must respect Hobby plan limits too: the default sandbox timeout needs to stay at or below 45 minutes unless explicitly overridden, or sandbox creation fails at runtime on Hobby deployments.
+- Vercel Sandbox timeout limits apply to the final API `timeout`, not just the app-level proactive timeout; if the provider adds a shutdown buffer, clamp against the plan max after accounting for that buffer or Hobby deployments will still fail with `timeout should be <= 2700000`.
 
 ## Sandbox UI State
 

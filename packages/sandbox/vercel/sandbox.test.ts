@@ -445,6 +445,15 @@ describe("GitHub credential brokering", () => {
 });
 
 describe("VercelSandbox.create", () => {
+  test("clamps requested timeout to stay under the SDK timeout limit after buffer", async () => {
+    await sandboxModule.VercelSandbox.create({
+      timeout: 2_700_000,
+    });
+
+    expect(createCalls.length).toBe(1);
+    expect(createCalls[0]?.timeout).toBe(2_700_000);
+  });
+
   test("creates from base snapshot and clones git source", async () => {
     await sandboxModule.VercelSandbox.create({
       baseSnapshotId: "snap-base-1",
