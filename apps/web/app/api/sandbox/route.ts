@@ -38,6 +38,41 @@ interface CreateSandboxRequest {
   sandboxType?: "vercel";
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
+function getSandboxCreationErrorMessage(error: unknown): string {
+  const message = getErrorMessage(error);
+  const normalized = message.toLowerCase();
+
+  if (
+    (normalized.includes("timeout") || normalized.includes("duration")) &&
+    (normalized.includes("45") ||
+      normalized.includes("hobby") ||
+      normalized.includes("plan"))
+  ) {
+    return "Sandbox creation failed because the configured timeout exceeds your Vercel Sandbox plan limit. On Hobby, the timeout must be 45 minutes or less.";
+  }
+
+  if (
+    normalized.includes("snapshot") &&
+    (normalized.includes("404") ||
+      normalized.includes("403") ||
+      normalized.includes("not found") ||
+      normalized.includes("forbidden") ||
+      normalized.includes("unauthorized"))
+  ) {
+    return "Sandbox creation failed because the configured base snapshot is unavailable for this Vercel account. Set VERCEL_SANDBOX_BASE_SNAPSHOT_ID to a snapshot you own.";
+  }
+
+  return message || "Failed to create sandbox. Please try again.";
+}
+
 // async function syncVercelProjectEnvVarsToSandbox(params: {
 //   userId: string;
 //   sessionRecord: SessionRecord;
@@ -169,23 +204,32 @@ export async function POST(req: Request) {
       }
     : undefined;
 
-  const sandbox = await connectSandbox({
-    state: {
-      type: "vercel",
-      ...(sandboxName ? { sandboxName } : {}),
-      source,
-    },
-    options: {
-      githubToken: githubToken ?? undefined,
-      gitUser,
-      timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
-      ports: DEFAULT_SANDBOX_PORTS,
-      baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
-      persistent: !!sandboxName,
-      resume: !!sandboxName,
-      createIfMissing: !!sandboxName,
-    },
-  });
+  let sandbox: Awaited<ReturnType<typeof connectSandbox>>;
+  try {
+    sandbox = await connectSandbox({
+      state: {
+        type: "vercel",
+        ...(sandboxName ? { sandboxName } : {}),
+        source,
+      },
+      options: {
+        githubToken: githubToken ?? undefined,
+        gitUser,
+        timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
+        ports: DEFAULT_SANDBOX_PORTS,
+        baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
+        persistent: !!sandboxName,
+        resume: !!sandboxName,
+        createIfMissing: !!sandboxName,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to create sandbox:", error);
+    return Response.json(
+      { error: getSandboxCreationErrorMessage(error) },
+      { status: 500 },
+    );
+  }
 
   if (sessionId && sandbox.getState) {
     const nextState = sandbox.getState() as SandboxState;

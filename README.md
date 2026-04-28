@@ -94,12 +94,14 @@ REDIS_URL=
 KV_URL=
 VERCEL_PROJECT_PRODUCTION_URL=
 NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL=
+VERCEL_SANDBOX_TIMEOUT_MS=
 VERCEL_SANDBOX_BASE_SNAPSHOT_ID=
 ELEVENLABS_API_KEY=
 ```
 
 - `REDIS_URL` / `KV_URL`: optional skills metadata cache (falls back to in-memory when not configured).
 - `VERCEL_PROJECT_PRODUCTION_URL` / `NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL`: canonical production URL for metadata and some callback behavior.
+- `VERCEL_SANDBOX_TIMEOUT_MS`: optional sandbox timeout override in milliseconds. The default stays within the Vercel Hobby Sandbox 45-minute limit; raise it explicitly only on plans that support longer runtimes.
 - `VERCEL_SANDBOX_BASE_SNAPSHOT_ID`: override the default sandbox snapshot.
 - `ELEVENLABS_API_KEY`: voice transcription.
 

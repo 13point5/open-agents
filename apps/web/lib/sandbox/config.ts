@@ -3,8 +3,27 @@
  * All timeout values are in milliseconds.
  */
 
-/** Default timeout for new cloud sandboxes (5 hours) */
-export const DEFAULT_SANDBOX_TIMEOUT_MS = 5 * 60 * 60 * 1000;
+function parseSandboxTimeoutOverride(value?: string): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return parsed;
+}
+
+/**
+ * Default timeout for new cloud sandboxes.
+ * Keep the default within the Vercel Hobby Sandbox limit (45 minutes).
+ * Pro and Enterprise deployments can override this via VERCEL_SANDBOX_TIMEOUT_MS.
+ */
+export const DEFAULT_SANDBOX_TIMEOUT_MS =
+  parseSandboxTimeoutOverride(process.env.VERCEL_SANDBOX_TIMEOUT_MS) ??
+  45 * 60 * 1000;
 
 /** Manual extension duration for explicit fallback flows (20 minutes) */
 export const EXTEND_TIMEOUT_DURATION_MS = 20 * 60 * 1000;
