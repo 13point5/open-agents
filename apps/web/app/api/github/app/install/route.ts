@@ -45,6 +45,10 @@ function redirectWithInstallCookies(
   return response;
 }
 
+function createNewInstallationUrl(appSlug: string): URL {
+  return new URL(`https://github.com/apps/${appSlug}/installations/new`);
+}
+
 export async function GET(req: NextRequest): Promise<Response> {
   const session = await getServerSession();
   const redirectTo = sanitizeRedirectTo(req.nextUrl.searchParams.get("next"));
@@ -65,9 +69,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   // if a specific target_id is provided, go directly to install for that account
   const targetId = req.nextUrl.searchParams.get("target_id");
   if (targetId && /^\d+$/.test(targetId)) {
-    const installUrl = new URL(
-      `https://github.com/apps/${appSlug}/installations/new/permissions`,
-    );
+    const installUrl = createNewInstallationUrl(appSlug);
     installUrl.searchParams.set("state", state);
     installUrl.searchParams.set("target_id", targetId);
     return redirectWithInstallCookies(installUrl, redirectTo, state);
@@ -87,9 +89,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   if (reconnect === "1") {
     const accountId = await getGitHubAccountId(session.user.id);
     if (accountId) {
-      const installUrl = new URL(
-        `https://github.com/apps/${appSlug}/installations/new/permissions`,
-      );
+      const installUrl = createNewInstallationUrl(appSlug);
       installUrl.searchParams.set("state", state);
       installUrl.searchParams.set("target_id", accountId);
       return redirectWithInstallCookies(installUrl, redirectTo, state);
@@ -117,9 +117,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   if (installations.length === 0) {
     // no installations — route to install page
-    const installUrl = new URL(
-      `https://github.com/apps/${appSlug}/installations/new/permissions`,
-    );
+    const installUrl = createNewInstallationUrl(appSlug);
     installUrl.searchParams.set("state", state);
     return redirectWithInstallCookies(installUrl, redirectTo, state);
   }
