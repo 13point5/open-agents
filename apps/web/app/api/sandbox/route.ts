@@ -38,6 +38,8 @@ interface CreateSandboxRequest {
   sandboxType?: "vercel";
 }
 
+type SandboxConnectConfig = Parameters<typeof connectSandbox>[0];
+
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message;
@@ -71,6 +73,49 @@ function getSandboxCreationErrorMessage(error: unknown): string {
   }
 
   return message || "Failed to create sandbox. Please try again.";
+}
+
+function isSandboxNotFoundError(error: unknown): boolean {
+  const normalized = getErrorMessage(error).toLowerCase();
+
+  return (
+    normalized.includes("status code 404") || normalized.includes("not found")
+  );
+}
+
+function buildSandboxConnectConfig(params: {
+  sandboxName?: string;
+  source?: {
+    repo: string;
+    branch?: string;
+    newBranch?: string;
+  };
+  githubToken?: string;
+  gitUser: {
+    name: string;
+    email: string;
+  };
+  baseSnapshotId?: string;
+}): SandboxConnectConfig {
+  return {
+    state: {
+      type: "vercel",
+      ...(params.sandboxName ? { sandboxName: params.sandboxName } : {}),
+      ...(params.source ? { source: params.source } : {}),
+    },
+    options: {
+      githubToken: params.githubToken,
+      gitUser: params.gitUser,
+      timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
+      ports: DEFAULT_SANDBOX_PORTS,
+      ...(params.baseSnapshotId
+        ? { baseSnapshotId: params.baseSnapshotId }
+        : {}),
+      persistent: !!params.sandboxName,
+      resume: !!params.sandboxName,
+      createIfMissing: !!params.sandboxName,
+    },
+  };
 }
 
 // async function syncVercelProjectEnvVarsToSandbox(params: {
@@ -205,30 +250,44 @@ export async function POST(req: Request) {
     : undefined;
 
   let sandbox: Awaited<ReturnType<typeof connectSandbox>>;
+  const initialConnectConfig = buildSandboxConnectConfig({
+    sandboxName,
+    source,
+    githubToken: githubToken ?? undefined,
+    gitUser,
+    baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
+  });
   try {
-    sandbox = await connectSandbox({
-      state: {
-        type: "vercel",
-        ...(sandboxName ? { sandboxName } : {}),
-        source,
-      },
-      options: {
-        githubToken: githubToken ?? undefined,
-        gitUser,
-        timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
-        ports: DEFAULT_SANDBOX_PORTS,
-        baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
-        persistent: !!sandboxName,
-        resume: !!sandboxName,
-        createIfMissing: !!sandboxName,
-      },
-    });
+    sandbox = await connectSandbox(initialConnectConfig);
   } catch (error) {
-    console.error("Failed to create sandbox:", error);
-    return Response.json(
-      { error: getSandboxCreationErrorMessage(error) },
-      { status: 500 },
-    );
+    if (DEFAULT_SANDBOX_BASE_SNAPSHOT_ID && isSandboxNotFoundError(error)) {
+      console.warn(
+        "Base snapshot unavailable for this Vercel account; retrying sandbox creation without a base snapshot.",
+      );
+
+      try {
+        sandbox = await connectSandbox(
+          buildSandboxConnectConfig({
+            sandboxName,
+            source,
+            githubToken: githubToken ?? undefined,
+            gitUser,
+          }),
+        );
+      } catch (retryError) {
+        console.error("Failed to create sandbox:", retryError);
+        return Response.json(
+          { error: getSandboxCreationErrorMessage(retryError) },
+          { status: 500 },
+        );
+      }
+    } else {
+      console.error("Failed to create sandbox:", error);
+      return Response.json(
+        { error: getSandboxCreationErrorMessage(error) },
+        { status: 500 },
+      );
+    }
   }
 
   if (sessionId && sandbox.getState) {

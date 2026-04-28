@@ -40,6 +40,7 @@ interface ConnectConfig {
     };
   };
   options?: {
+    baseSnapshotId?: string;
     githubToken?: string;
     gitUser?: {
       email?: string;
@@ -66,7 +67,7 @@ let currentVercelAuthInfo: TestVercelAuthInfo | null;
 let currentGitHubToken: string | null;
 let currentDotenvContent: string;
 let currentDotenvError: Error | null;
-let currentConnectError: Error | null;
+let currentConnectErrors: Error[];
 
 mock.module("@/lib/session/get-server-session", () => ({
   getServerSession: async () => ({
@@ -126,8 +127,9 @@ mock.module("@open-agents/sandbox", () => ({
   connectSandbox: async (config: ConnectConfig) => {
     connectConfigs.push(config);
 
-    if (currentConnectError) {
-      throw currentConnectError;
+    const nextError = currentConnectErrors.shift();
+    if (nextError) {
+      throw nextError;
     }
 
     return {
@@ -184,7 +186,7 @@ describe("/api/sandbox lifecycle kicks", () => {
     currentGitHubToken = null;
     currentDotenvContent = 'API_KEY="secret"\n';
     currentDotenvError = null;
-    currentConnectError = null;
+    currentConnectErrors = [];
     sessionRecord = {
       id: "session-1",
       userId: "user-1",
@@ -390,9 +392,11 @@ describe("/api/sandbox lifecycle kicks", () => {
   test("returns actionable sandbox creation errors", async () => {
     const { POST } = await routeModulePromise;
 
-    currentConnectError = new Error(
-      "Sandbox create failed: hobby plan timeout limit is 45 minutes",
-    );
+    currentConnectErrors = [
+      new Error(
+        "Sandbox create failed: hobby plan timeout limit is 45 minutes",
+      ),
+    ];
 
     const response = await POST(
       new Request("http://localhost/api/sandbox", {
@@ -416,9 +420,14 @@ describe("/api/sandbox lifecycle kicks", () => {
   test("returns actionable base snapshot errors", async () => {
     const { POST } = await routeModulePromise;
 
-    currentConnectError = new Error(
-      "Snapshot create failed: 404 snapshot not found for this account",
-    );
+    currentConnectErrors = [
+      new Error(
+        "Snapshot create failed: 404 snapshot not found for this account",
+      ),
+      new Error(
+        "Snapshot create failed: 404 snapshot not found for this account",
+      ),
+    ];
 
     const response = await POST(
       new Request("http://localhost/api/sandbox", {
@@ -437,5 +446,33 @@ describe("/api/sandbox lifecycle kicks", () => {
       "Sandbox creation failed because the configured base snapshot is unavailable for this Vercel account. Set VERCEL_SANDBOX_BASE_SNAPSHOT_ID to a snapshot you own.",
     );
     expect(kickCalls).toHaveLength(0);
+  });
+
+  test("retries sandbox creation without a base snapshot after a raw 404", async () => {
+    const { POST } = await routeModulePromise;
+
+    currentConnectErrors = [new Error("Status code 404 is not ok")];
+
+    const response = await POST(
+      new Request("http://localhost/api/sandbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          sandboxType: "vercel",
+        }),
+      }),
+    );
+
+    expect(response.ok).toBe(true);
+    expect(connectConfigs).toHaveLength(2);
+    expect(connectConfigs[0]?.options?.baseSnapshotId).toBeDefined();
+    expect(connectConfigs[1]?.options?.baseSnapshotId).toBeUndefined();
+    expect(kickCalls).toEqual([
+      {
+        sessionId: "session-1",
+        reason: "sandbox-created",
+      },
+    ]);
   });
 });
