@@ -83,6 +83,10 @@ function isSandboxNotFoundError(error: unknown): boolean {
   );
 }
 
+function isSandboxBadRequestError(error: unknown): boolean {
+  return getErrorMessage(error).toLowerCase().includes("status code 400");
+}
+
 function buildSandboxConnectConfig(params: {
   sandboxName?: string;
   source?: {
@@ -96,7 +100,10 @@ function buildSandboxConnectConfig(params: {
     email: string;
   };
   baseSnapshotId?: string;
+  persistent?: boolean;
 }): SandboxConnectConfig {
+  const persistent = params.persistent ?? !!params.sandboxName;
+
   return {
     state: {
       type: "vercel",
@@ -111,9 +118,9 @@ function buildSandboxConnectConfig(params: {
       ...(params.baseSnapshotId
         ? { baseSnapshotId: params.baseSnapshotId }
         : {}),
-      persistent: !!params.sandboxName,
-      resume: !!params.sandboxName,
-      createIfMissing: !!params.sandboxName,
+      persistent,
+      resume: persistent && !!params.sandboxName,
+      createIfMissing: persistent && !!params.sandboxName,
     },
   };
 }
@@ -260,6 +267,16 @@ export async function POST(req: Request) {
   try {
     sandbox = await connectSandbox(initialConnectConfig);
   } catch (error) {
+    const retryWithoutPersistence = async () =>
+      connectSandbox(
+        buildSandboxConnectConfig({
+          source,
+          githubToken: githubToken ?? undefined,
+          gitUser,
+          persistent: false,
+        }),
+      );
+
     if (DEFAULT_SANDBOX_BASE_SNAPSHOT_ID && isSandboxNotFoundError(error)) {
       console.warn(
         "Base snapshot unavailable for this Vercel account; retrying sandbox creation without a base snapshot.",
@@ -275,9 +292,39 @@ export async function POST(req: Request) {
           }),
         );
       } catch (retryError) {
-        console.error("Failed to create sandbox:", retryError);
+        if (sandboxName && isSandboxBadRequestError(retryError)) {
+          console.warn(
+            "Persistent sandbox creation was rejected by this Vercel account; retrying with an ephemeral sandbox.",
+          );
+
+          try {
+            sandbox = await retryWithoutPersistence();
+          } catch (fallbackError) {
+            console.error("Failed to create sandbox:", fallbackError);
+            return Response.json(
+              { error: getSandboxCreationErrorMessage(fallbackError) },
+              { status: 500 },
+            );
+          }
+        } else {
+          console.error("Failed to create sandbox:", retryError);
+          return Response.json(
+            { error: getSandboxCreationErrorMessage(retryError) },
+            { status: 500 },
+          );
+        }
+      }
+    } else if (sandboxName && isSandboxBadRequestError(error)) {
+      console.warn(
+        "Persistent sandbox creation was rejected by this Vercel account; retrying with an ephemeral sandbox.",
+      );
+
+      try {
+        sandbox = await retryWithoutPersistence();
+      } catch (fallbackError) {
+        console.error("Failed to create sandbox:", fallbackError);
         return Response.json(
-          { error: getSandboxCreationErrorMessage(retryError) },
+          { error: getSandboxCreationErrorMessage(fallbackError) },
           { status: 500 },
         );
       }

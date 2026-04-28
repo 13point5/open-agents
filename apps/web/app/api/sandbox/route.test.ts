@@ -475,4 +475,35 @@ describe("/api/sandbox lifecycle kicks", () => {
       },
     ]);
   });
+
+  test("retries sandbox creation without persistence after a raw 400", async () => {
+    const { POST } = await routeModulePromise;
+
+    currentConnectErrors = [new Error("Status code 400 is not ok")];
+
+    const response = await POST(
+      new Request("http://localhost/api/sandbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          sandboxType: "vercel",
+        }),
+      }),
+    );
+
+    expect(response.ok).toBe(true);
+    expect(connectConfigs).toHaveLength(2);
+    expect(connectConfigs[0]?.state.sandboxName).toBe("session_session-1");
+    expect(connectConfigs[0]?.options?.persistent).toBe(true);
+    expect(connectConfigs[1]?.state.sandboxName).toBeUndefined();
+    expect(connectConfigs[1]?.options?.persistent).toBe(false);
+    expect(connectConfigs[1]?.options?.baseSnapshotId).toBeUndefined();
+    expect(kickCalls).toEqual([
+      {
+        sessionId: "session-1",
+        reason: "sandbox-created",
+      },
+    ]);
+  });
 });
