@@ -8,16 +8,19 @@ type CreateSandboxErrorResponse = {
   error?: string;
   reason?: string;
   actionUrl?: string;
+  actionLabel?: string;
 };
 
 export type SandboxCreateErrorDetails = {
   message: string;
   actionUrl?: string;
+  actionLabel?: string;
 };
 
 class SandboxCreateRequestError extends Error {
   readonly reason?: string;
   readonly actionUrl?: string;
+  readonly actionLabel?: string;
   readonly status: number;
   readonly responseBody?: string;
 
@@ -27,6 +30,7 @@ class SandboxCreateRequestError extends Error {
       status: number;
       reason?: string;
       actionUrl?: string;
+      actionLabel?: string;
       responseBody?: string;
     },
   ) {
@@ -34,6 +38,7 @@ class SandboxCreateRequestError extends Error {
     this.name = "SandboxCreateRequestError";
     this.reason = options.reason;
     this.actionUrl = options.actionUrl;
+    this.actionLabel = options.actionLabel;
     this.status = options.status;
     this.responseBody = options.responseBody;
   }
@@ -74,6 +79,7 @@ export function getSandboxCreateErrorDetails(
     return {
       message: error.message,
       actionUrl: error.actionUrl,
+      actionLabel: error.actionLabel,
     };
   }
 
@@ -87,6 +93,10 @@ export function getSandboxCreateErrorDetails(
 function getFallbackSandboxCreateErrorMessage(status: number): string {
   if (status === 403) {
     return "Sandbox access denied. Please reconnect GitHub and try again.";
+  }
+
+  if (status === 402) {
+    return "Sandbox creation is blocked by your current Vercel Sandbox plan or usage limits. Check your Vercel Sandbox usage, then try again.";
   }
 
   return "Failed to create sandbox. Please try again.";
@@ -122,6 +132,7 @@ export async function createSandbox(
       status: response.status,
       reason: getOptionalString(payload?.reason),
       actionUrl: getOptionalString(payload?.actionUrl),
+      actionLabel: getOptionalString(payload?.actionLabel),
       responseBody: rawBody || undefined,
     });
   }

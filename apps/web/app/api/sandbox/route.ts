@@ -39,6 +39,12 @@ interface CreateSandboxRequest {
 }
 
 type SandboxConnectConfig = Parameters<typeof connectSandbox>[0];
+type SandboxCreationErrorResponse = {
+  error: string;
+  reason?: string;
+  actionUrl?: string;
+  actionLabel?: string;
+};
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim().length > 0) {
@@ -62,6 +68,19 @@ function getSandboxCreationErrorMessage(error: unknown): string {
   }
 
   if (
+    normalized.includes("status code 402") ||
+    normalized.includes("payment required") ||
+    normalized.includes("sandbox creation is paused") ||
+    ((normalized.includes("usage") ||
+      normalized.includes("quota") ||
+      normalized.includes("limit") ||
+      normalized.includes("billing")) &&
+      normalized.includes("sandbox"))
+  ) {
+    return "Sandbox creation failed because your Vercel Sandbox usage is paused or your current Vercel plan does not allow more Sandbox usage. Check Vercel Sandbox usage and limits, or upgrade to Pro.";
+  }
+
+  if (
     normalized.includes("snapshot") &&
     (normalized.includes("404") ||
       normalized.includes("403") ||
@@ -73,6 +92,35 @@ function getSandboxCreationErrorMessage(error: unknown): string {
   }
 
   return message || "Failed to create sandbox. Please try again.";
+}
+
+function getSandboxCreationErrorResponse(error: unknown): {
+  status: number;
+  body: SandboxCreationErrorResponse;
+} {
+  const message = getErrorMessage(error);
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("status code 402") ||
+    normalized.includes("payment required") ||
+    normalized.includes("sandbox creation is paused")
+  ) {
+    return {
+      status: 402,
+      body: {
+        error: getSandboxCreationErrorMessage(error),
+        reason: "vercel_sandbox_usage_paused",
+        actionUrl: "https://vercel.com/docs/vercel-sandbox/pricing",
+        actionLabel: "View Vercel Sandbox limits",
+      },
+    };
+  }
+
+  return {
+    status: 500,
+    body: { error: getSandboxCreationErrorMessage(error) },
+  };
 }
 
 function isSandboxNotFoundError(error: unknown): boolean {
@@ -301,17 +349,18 @@ export async function POST(req: Request) {
             sandbox = await retryWithoutPersistence();
           } catch (fallbackError) {
             console.error("Failed to create sandbox:", fallbackError);
-            return Response.json(
-              { error: getSandboxCreationErrorMessage(fallbackError) },
-              { status: 500 },
-            );
+            const errorResponse =
+              getSandboxCreationErrorResponse(fallbackError);
+            return Response.json(errorResponse.body, {
+              status: errorResponse.status,
+            });
           }
         } else {
           console.error("Failed to create sandbox:", retryError);
-          return Response.json(
-            { error: getSandboxCreationErrorMessage(retryError) },
-            { status: 500 },
-          );
+          const errorResponse = getSandboxCreationErrorResponse(retryError);
+          return Response.json(errorResponse.body, {
+            status: errorResponse.status,
+          });
         }
       }
     } else if (sandboxName && isSandboxBadRequestError(error)) {
@@ -323,17 +372,17 @@ export async function POST(req: Request) {
         sandbox = await retryWithoutPersistence();
       } catch (fallbackError) {
         console.error("Failed to create sandbox:", fallbackError);
-        return Response.json(
-          { error: getSandboxCreationErrorMessage(fallbackError) },
-          { status: 500 },
-        );
+        const errorResponse = getSandboxCreationErrorResponse(fallbackError);
+        return Response.json(errorResponse.body, {
+          status: errorResponse.status,
+        });
       }
     } else {
       console.error("Failed to create sandbox:", error);
-      return Response.json(
-        { error: getSandboxCreationErrorMessage(error) },
-        { status: 500 },
-      );
+      const errorResponse = getSandboxCreationErrorResponse(error);
+      return Response.json(errorResponse.body, {
+        status: errorResponse.status,
+      });
     }
   }
 

@@ -448,6 +448,39 @@ describe("/api/sandbox lifecycle kicks", () => {
     expect(kickCalls).toHaveLength(0);
   });
 
+  test("returns actionable sandbox quota errors", async () => {
+    const { POST } = await routeModulePromise;
+
+    currentConnectErrors = [new Error("Status code 402 is not ok")];
+
+    const response = await POST(
+      new Request("http://localhost/api/sandbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          sandboxType: "vercel",
+        }),
+      }),
+    );
+    const payload = (await response.json()) as {
+      error: string;
+      reason?: string;
+      actionUrl?: string;
+      actionLabel?: string;
+    };
+
+    expect(response.status).toBe(402);
+    expect(payload).toEqual({
+      error:
+        "Sandbox creation failed because your Vercel Sandbox usage is paused or your current Vercel plan does not allow more Sandbox usage. Check Vercel Sandbox usage and limits, or upgrade to Pro.",
+      reason: "vercel_sandbox_usage_paused",
+      actionUrl: "https://vercel.com/docs/vercel-sandbox/pricing",
+      actionLabel: "View Vercel Sandbox limits",
+    });
+    expect(kickCalls).toHaveLength(0);
+  });
+
   test("retries sandbox creation without a base snapshot after a raw 404", async () => {
     const { POST } = await routeModulePromise;
 

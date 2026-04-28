@@ -26,6 +26,7 @@ export function SandboxCreateErrorBanner({
     error.actionUrl && isSafeActionUrl(error.actionUrl)
       ? error.actionUrl
       : null;
+  const actionLabel = error.actionLabel?.trim() || "Reconnect GitHub";
 
   return (
     <div className="flex items-start justify-between rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -36,7 +37,7 @@ export function SandboxCreateErrorBanner({
             href={actionUrl}
             className="font-medium underline underline-offset-4 hover:no-underline"
           >
-            Reconnect GitHub
+            {actionLabel}
           </Link>
         ) : null}
       </div>
